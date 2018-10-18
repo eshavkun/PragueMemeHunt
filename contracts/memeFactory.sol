@@ -36,7 +36,7 @@ contract memeFactory is Ownable, ERC721Full{
 
   event MemeAdded(uint id, string name, address location);
   event MemeLocationChanged(uint id, address oldLocation, address newLocation);
-  event MemeClaimed(uint memeType, uint geneCode, address owner, address location);
+  event MemeClaimed(uint id, uint memeType, uint geneCode, address owner, address location);
   event SwagRedeemed(uint memeId);
 
   ///@dev Log events for debugging
@@ -131,7 +131,7 @@ contract memeFactory is Ownable, ERC721Full{
     uint id = memes.push(Meme(memeLocation[_location], geneCode, false));
     _addTokenTo(msg.sender, id);
     collectedMemes[msg.sender][_location] = id;
-    emit MemeClaimed(memeLocation[_location], geneCode, msg.sender, _location);
+    emit MemeClaimed(id, memeLocation[_location], geneCode, msg.sender, _location);
   }
 
 
@@ -140,7 +140,7 @@ contract memeFactory is Ownable, ERC721Full{
     require(ownerOf(_id) == msg.sender, "Token doesn't belong to sender");
     require(memes[_id-1].swagRedeemed == false, "The swag is already redeemed");
 
-    memes[_id].swagRedeemed = true;
+    memes[_id-1].swagRedeemed = true;
     emit SwagRedeemed(_id);
   }
 

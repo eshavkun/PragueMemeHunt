@@ -8,8 +8,11 @@ contract('memeFactory', async (accounts) => {
     let _owner = accounts[0];
     let _player1 = accounts[1];
     let _player2 = accounts[2];
+    let _players = [accounts[1], accounts[2]];
     let _location1 = accounts[3];
     let _location2 = accounts[4];
+    let _location3 = accounts[5];
+    let _locations = [accounts[3], accounts[4], accounts[5]];
     const name = "MemeFactory test";
     const symbol = "MHNT";
     const memes = ["Meme1","Meme2"];
@@ -92,11 +95,54 @@ contract('memeFactory', async (accounts) => {
             await contract.claimMeme(_location2,v,r,s,{from:_player2});
             await expectThrow(contract.claimMeme(_location2,v,r,s,{from:_player2})); //Trying to collect from the same location            
         })
+
+        it('Should allow collecting the same meme by different players', async() => {
+            let sig;
+            
+            sig = await signMemeClaim(_locations[0], _players[0]);
+            await contract.claimMeme(_locations[0],sig.v,sig.r,sig.s,{from:_players[0]});
+            sig = await signMemeClaim(_locations[0], _players[1]);
+            await contract.claimMeme(_locations[0],sig.v,sig.r,sig.s,{from:_players[1]});
+        })
     })
 
- 
+    describe('Redeeming swag', () => {
+        beforeEach(async() => {
+            contract = await memeFactory.new(name,symbol,{from: _owner});
+            await contract.addMemeType(memes[0],_locations[0],{from:_owner});
+            sig = await signMemeClaim(_locations[0], _players[0]);
+            await contract.claimMeme(_locations[0],sig.v,sig.r,sig.s,{from:_players[0]});
+        })
 
+        it('Should allow player to redeem a swag using their meme', async() => {
+            await contract.redeemSwag(1, {from:_players[0]});
+        })
+
+        it('Should not allow player to redeem using already used meme', async() => {
+            await contract.redeemSwag(1, {from:_players[0]});
+            await expectThrow(contract.redeemSwag(1), {from:_players[0]});
+        })
+
+        it('Should not allow using meme ownned by other', async() => {
+            await expectThrow(contract.redeemSwag(1), {from:_players[1]});
+        })
+    })
 })
+
+async function signMemeClaim(location, player) {
+    const h = web3.utils.soliditySha3(player);
+    let sig = await web3.eth.sign(h, location);
+    sig = sig.slice(2);
+    const r = `0x${sig.slice(0, 64)}`;
+    const s = `0x${sig.slice(64, 128)}`;
+    const v = web3.utils.toDecimal(sig.slice(128, 130)) + 27;
+
+    return {
+        v:v,
+        r:r,
+        s:s
+    };
+}
 
 async function expectThrow(promise) {
     const errMsg = 'Expected throw not received';
