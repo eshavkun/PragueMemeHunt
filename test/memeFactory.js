@@ -6,16 +6,12 @@ const web3 = new Web3(new Web3.providers.HttpProvider('http://localhost:8545'));
 contract('memeFactory', async (accounts) => {
     let contract;  
     let _owner = accounts[0];
-    let _player1 = accounts[1];
-    let _player2 = accounts[2];
-    let _players = [accounts[1], accounts[2]];
-    let _location1 = accounts[3];
-    let _location2 = accounts[4];
-    let _location3 = accounts[5];
-    let _locations = [accounts[3], accounts[4], accounts[5]];
+    let _collectors = [accounts[1], accounts[2]];
+    let _doge = {loc: accounts[3], name: "Doge"};
+    let _grumpy = {loc: accounts[4], name: "Grumpy Cat"};
+    let _trollface = {loc: accounts[5], name: "Trollface"};
     const name = "MemeFactory test";
     const symbol = "MHNT";
-    const memes = ["Meme1","Meme2"];
 
     describe('Adding memes', () => {
 
@@ -25,18 +21,18 @@ contract('memeFactory', async (accounts) => {
         })
 
         it('Should allow adding new meme types to owner', async() => {
-            await contract.addMemeType(memes[0],_location1,{from:_owner});
-            const id = await contract.getMemeIdAtLocation(_location1);
+            await contract.addMemeType(_doge.name,_doge.loc,{from:_owner});
+            const id = await contract.getMemeIdAtLocation(_doge.loc);
             assert.notEqual(id,0,"Meme is not found at location");
             const name = await contract.getMemeName(id);
-            assert.equal(name,memes[0],"Meme names do not match");
+            assert.equal(name,_doge.name,"Meme names do not match");
         })
         it('Should not allow adding new meme types to anyone except owner', async() => {
-            await expectThrow(contract.addMemeType(memes[0],_location1,{from:_player1}));
+            await expectThrow(contract.addMemeType(_doge.name,_doge.loc,{from:_collectors[0]}));
         })
         it('Should not allow adding another meme to existing location', async() => {
-            await contract.addMemeType(memes[0],_location1,{from:_owner});
-            await expectThrow(contract.addMemeType(memes[1],_location1,{from:_owner}));
+            await contract.addMemeType(_doge.name,_doge.loc,{from:_owner});
+            await expectThrow(contract.addMemeType(_grumpy.name,_doge.loc,{from:_owner}));
         })
     })
 
@@ -44,93 +40,81 @@ contract('memeFactory', async (accounts) => {
         
         beforeEach(async() => {
             contract = await memeFactory.new(name,symbol,{from: _owner});
-            await contract.addMemeType(memes[0],_location1,{from:_owner});
-            await contract.addMemeType(memes[1],_location2,{from:_owner});
+            await contract.addMemeType(_doge.name,_doge.loc,{from:_owner});
+            await contract.addMemeType(_grumpy.name,_grumpy.loc,{from:_owner});
         })
         
         it('Should allow collecting a meme given correct signature', async() => {
-            const h = web3.utils.soliditySha3(_player1);
-            let sig = await web3.eth.sign(h, _location1);
-            sig = sig.slice(2);
-            const r = `0x${sig.slice(0, 64)}`;
-            const s = `0x${sig.slice(64, 128)}`;
-            const v = web3.utils.toDecimal(sig.slice(128, 130)) + 27;
+            let sig;
 
-            await contract.claimMeme(_location1,v,r,s,{from:_player1});
+            sig = await signMemeClaim(_doge.loc, _collectors[0]); 
+            await contract.claimMeme(_doge.loc,sig.v,sig.r,sig.s,{from:_collectors[0]});
 
             //Balance and ownership checks
-            const balance = await contract.balanceOf(_player1);
-            const collectedMemeId = await contract.getClaimedMemeAtLocation(_player1, _location1);
+            const balance = await contract.balanceOf(_collectors[0]);
+            const collectedMemeId = await contract.getClaimedMemeAtLocation(_collectors[0], _doge.loc);
             const player = await contract.ownerOf(collectedMemeId);                         
-            const collectedMemes = await contract.getMemesByOwner(_player1);
-            const collectedMeme = await contract.getMemeDetails(collectedMemes[0]);
-            console.log("Collected meme: " + collectedMeme);
+            const collectedMemes = await contract.getMemesByOwner(_collectors[0]);
+            const collectedMeme = await contract.getMemeDetails(collectedMemes);
+            //console.log("Collected meme: " + collectedMeme);
             const collectedMemeName = await contract.getMemeName(collectedMeme[0]);
             
             assert.equal(balance, 1, "Player meme balance is not correct");
-            assert.equal(player, _player1, "Meme doesn't belong to player");
-            assert.equal(collectedMemeName, memes[0], "Player meme balance is not correct");                            
+            assert.equal(player, _collectors[0], "Meme doesn't belong to player");
+            assert.equal(collectedMemeName, _doge.name, "Player meme balance is not correct");                            
         })
 
         it('Should not allow collecting a meme without valid signature', async() => {
-            const h = web3.utils.soliditySha3(_player2);
-            let sig = await web3.eth.sign(h, _location2);
-            sig = sig.slice(2);
-            const r = `0x${sig.slice(0, 64)}`;
-            const s = `0x${sig.slice(64, 128)}`;
-            const v = web3.utils.toDecimal(sig.slice(128, 130)) + 27;
+            let sig;
 
-            await expectThrow(contract.claimMeme(_location1,v,r,s,{from:_player2})); //Using wrong location
-            await expectThrow(contract.claimMeme(_location2,v,r,s,{from:_player1})); //Using wrong player (from)            
+            sig = await signMemeClaim(_grumpy.loc, _collectors[1]);            
+            await expectThrow(contract.claimMeme(_doge.loc,sig.v,sig.r,sig.s,{from:_collectors[1]})); //Using wrong location
+            await expectThrow(contract.claimMeme(_grumpy.loc,sig.v,sig.r,sig.s,{from:_collectors[0]})); //Using wrong player (from)            
         })
 
         it('Should not allow collecting already collected meme', async() => {
-            const h = web3.utils.soliditySha3(_player2);
-            let sig = await web3.eth.sign(h, _location2);
-            sig = sig.slice(2);
-            const r = `0x${sig.slice(0, 64)}`;
-            const s = `0x${sig.slice(64, 128)}`;
-            const v = web3.utils.toDecimal(sig.slice(128, 130)) + 27;
+            let sig;
 
-            await contract.claimMeme(_location2,v,r,s,{from:_player2});
-            await expectThrow(contract.claimMeme(_location2,v,r,s,{from:_player2})); //Trying to collect from the same location            
+            sig = await signMemeClaim(_grumpy.loc, _collectors[1]);
+            await contract.claimMeme(_grumpy.loc,sig.v,sig.r,sig.s,{from:_collectors[1]});
+            await expectThrow(contract.claimMeme(_grumpy.loc,sig.v,sig.r,sig.s,{from:_collectors[1]})); //Trying to collect from the same location            
         })
 
         it('Should allow collecting the same meme by different players', async() => {
             let sig;
             
-            sig = await signMemeClaim(_locations[0], _players[0]);
-            await contract.claimMeme(_locations[0],sig.v,sig.r,sig.s,{from:_players[0]});
-            sig = await signMemeClaim(_locations[0], _players[1]);
-            await contract.claimMeme(_locations[0],sig.v,sig.r,sig.s,{from:_players[1]});
+            sig = await signMemeClaim(_doge.loc, _collectors[0]);
+            await contract.claimMeme(_doge.loc,sig.v,sig.r,sig.s,{from:_collectors[0]});
+            sig = await signMemeClaim(_doge.loc, _collectors[1]);
+            await contract.claimMeme(_doge.loc,sig.v,sig.r,sig.s,{from:_collectors[1]});
         })
     })
 
     describe('Redeeming swag', () => {
         beforeEach(async() => {
             contract = await memeFactory.new(name,symbol,{from: _owner});
-            await contract.addMemeType(memes[0],_locations[0],{from:_owner});
-            sig = await signMemeClaim(_locations[0], _players[0]);
-            await contract.claimMeme(_locations[0],sig.v,sig.r,sig.s,{from:_players[0]});
+            await contract.addMemeType(_doge.name,_doge.loc,{from:_owner});
+            sig = await signMemeClaim(_doge.loc, _collectors[0]);
+            await contract.claimMeme(_doge.loc,sig.v,sig.r,sig.s,{from:_collectors[0]});
         })
 
         it('Should allow player to redeem a swag using their meme', async() => {
-            await contract.redeemSwag(1, {from:_players[0]});
+            await contract.redeemSwag(1, {from:_collectors[0]});
         })
 
         it('Should not allow player to redeem using already used meme', async() => {
-            await contract.redeemSwag(1, {from:_players[0]});
-            await expectThrow(contract.redeemSwag(1), {from:_players[0]});
+            await contract.redeemSwag(1, {from:_collectors[0]});
+            await expectThrow(contract.redeemSwag(1), {from:_collectors[0]});
         })
 
         it('Should not allow using meme ownned by other', async() => {
-            await expectThrow(contract.redeemSwag(1), {from:_players[1]});
+            await expectThrow(contract.redeemSwag(1), {from:_collectors[1]});
         })
     })
 })
 
-async function signMemeClaim(location, player) {
-    const h = web3.utils.soliditySha3(player);
+async function signMemeClaim(location, collector) {
+    const h = web3.utils.soliditySha3(collector);
     let sig = await web3.eth.sign(h, location);
     sig = sig.slice(2);
     const r = `0x${sig.slice(0, 64)}`;
