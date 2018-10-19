@@ -45,6 +45,9 @@ contract memeFactory is Ownable, ERC721Full{
   event LogAddress(string message, address value);
   event LogInt(string message, uint value);
 
+  ///@dev Add collectable meme type to location and assign it to location
+  ///@param _name Name of the new meme type
+  ///@param _location ETH address of meme location
   function addMemeType(string _name, address _location) public onlyOwner {
     require(_location != address(0));
     require(memeLocation[_location] == 0, "Location already has a meme registered to it");
@@ -54,6 +57,10 @@ contract memeFactory is Ownable, ERC721Full{
     emit MemeAdded(id, _name, _location);
   }
 
+  ///@dev Change location of existing meme type. Doesn't affect already collected memes
+  ///@param _id Meme type ID as saved in memeLocation mapping
+  ///@param _oldLocation Current ETH address of meme
+  ///@param _newLocation New ETH address of meme
   function changeMemeLocation(uint _id, address _oldLocation, address _newLocation) public onlyOwner {
     require(memeLocation[_oldLocation] == _id, "Meme is not found at provided location");
     require(_newLocation != address(0));
@@ -64,18 +71,27 @@ contract memeFactory is Ownable, ERC721Full{
     emit MemeLocationChanged(_id, _oldLocation, _newLocation);
   }
 
+  ///@dev Get Meme type ID associated with ETH address
   function getMemeIdAtLocation(address _location) external view returns(uint) {
     return memeLocation[_location];
   }
 
+  ///@dev Get Meme name by type ID
   function getMemeName(uint _id) external view returns(string) {
     return memeTypes[_id - 1];
   }
 
+  ///@dev Get meme collected by player at given location
+  ///@param _owner Player address
+  ///@param _location Meme ETH address
+  ///@return ID of collected meme (!= meme type)
   function getClaimedMemeAtLocation(address _owner, address _location) external view returns(uint) {
     return collectedMemes[_owner][_location];
   }
 
+  ///@dev Get Meme IDs collected by player
+  ///@param _owner Player address
+  ///@return Array of Meme IDs (!= meme type)
   function getMemesByOwner(address _owner) external view returns(uint[]) {
     require (_owner != address(0));
 
@@ -92,6 +108,9 @@ contract memeFactory is Ownable, ERC721Full{
     return result;
   }
 
+  ///@dev Get Meme IDs collected by player for which swag was not redeemed (Meme.swagRedeemed == false)
+  ///@param _owner Player address
+  ///@return Array of Meme IDs (!= meme type)
   function getRedeemableMemesByOwner(address _owner) external view returns(uint[]) {
     require (_owner != address(0));
 
@@ -99,7 +118,7 @@ contract memeFactory is Ownable, ERC721Full{
 
     uint counter = 0;
     for (uint i = 1; i <= memes.length; i++) {
-      if (ownerOf(i) == _owner && memes[i-1].swagRedeemed == false) {
+      if (ownerOf(i) == _owner && !memes[i-1].swagRedeemed) {
         result[counter] = i;
         counter++;
       }
@@ -113,19 +132,27 @@ contract memeFactory is Ownable, ERC721Full{
     return trimmedResult;
   }
   
+  ///@dev Get meme details (Meme truct) with given id
   function getMemeDetails(uint _id) external view returns(uint,uint,bool) {
     Meme memory m = memes[_id - 1];
 
     return (m.typeId, m.geneCode, m.swagRedeemed);
   }
 
+  ///@dev Claim meme at location given player address signed by Meme ETH key
+  ///@dev Player address is expected to be hashed before signing
+  ///@dev If signature is valid new meme with type at given location is added to player account
+  ///@param _location Meme type location
+  ///@param _v v parameter of signature
+  ///@param _r r parameter of signature
+  ///@param _s s parameter of signature
   function claimMeme(address _location, uint8 _v, bytes32 _r, bytes32 _s) public {
     require(memeLocation[_location] != 0, "There is not meme at location");
     require(collectedMemes[msg.sender][_location] == 0, "Meme is already collected");
 
-    bytes32 hashedSender = keccak256(abi.encodePacked(msg.sender));
-    bytes32 prefixedHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32",hashedSender));
-    require(ecrecover(prefixedHash,_v,_r,_s) == _location, "Signature is not recognized");
+    bytes32 hashedSender = keccak256(abi.encodePacked(msg.sender)); //Hash sender's (player's) address
+    bytes32 prefixedHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32",hashedSender)); //Add standard prefix and hash
+    require(ecrecover(prefixedHash,_v,_r,_s) == _location, "Signature is not recognized"); //Check the signature
 
     uint geneCode = _generateGeneCode(msg.sender, _location);
     uint id = memes.push(Meme(memeLocation[_location], geneCode, false));
@@ -136,6 +163,7 @@ contract memeFactory is Ownable, ERC721Full{
 
 
   
+  ///@dev Redeem swag using Meme with given ID (!= meme type ID)
   function redeemSwag(uint _id) public {
     require(ownerOf(_id) == msg.sender, "Token doesn't belong to sender");
     require(memes[_id-1].swagRedeemed == false, "The swag is already redeemed");
@@ -144,6 +172,7 @@ contract memeFactory is Ownable, ERC721Full{
     emit SwagRedeemed(_id);
   }
 
+  ///@dev Generate gene code of meme by hasing type address, player address and meme type name
   function _generateGeneCode(address _owner, address _location) internal view returns(uint){
     string memory name = memeTypes[memeLocation[_location] - 1];
     uint code = uint(keccak256(abi.encodePacked(_owner, _location, name)));
